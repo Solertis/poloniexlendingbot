@@ -5,7 +5,7 @@ import time
 import traceback
 import datetime
 import pandas as pd
-import sqlite3 as lite
+import sqlite3 as sqlite
 from sqlite3 import Error
 
 # Bot libs
@@ -165,6 +165,11 @@ class MarketAnalysis(object):
                 market_data.append(str(raw_data[i]['rate']))
                 market_data.append(str(raw_data[i]['amount']))
             market_data.append('0')  # Percentile field not being filled yet.
+            self.insert_into_db(db_con, market_data)
+
+    def insert_into_db(self, db_con, market_data, levels=None):
+            if levels is None:
+                levels = self.recorded_levels
             insert_sql = "INSERT INTO loans ("
             for level in xrange(levels):
                 insert_sql += "rate{0}, amnt{0}, ".format(level)
@@ -213,12 +218,16 @@ class MarketAnalysis(object):
         """
         # Request more data from the DB than we need to allow for skipped seconds
         request_seconds = int(seconds * 1.1)
-        FULL_LIST = Config.get_all_currencies()
-        if cur not in FULL_LIST:
-            raise ValueError("{0} is not a valid currency, must be one of {1}".format(cur, FULL_LIST))
-        if cur not in self.currencies_to_analyse:
-            return []
-        db_con = self.create_connection(cur)
+        full_list = Config.get_all_currencies()
+        if isinstance(cur, sqlite.Connection):
+            db_con = cur
+        else:
+            if cur not in full_list:
+                raise ValueError("{0} is not a valid currency, must be one of {1}".format(cur, full_list))
+            if cur not in self.currencies_to_analyse:
+                return []
+            db_con = self.create_connection(cur)
+
         price_levels = ['rate0']
         rates = self.get_rates_from_db(db_con, from_date=time.time() - request_seconds, price_levels=price_levels)
         df = pd.DataFrame(rates)
@@ -275,9 +284,10 @@ class MarketAnalysis(object):
                     print("DEBUG:get_analysis_seconds: cur: {0} method:{1} rates:{2}".format(cur, method, rates))
                 return 0
             if self.ma_debug_log:
-                print("Cur:{0}, MACD:{1:.6f}, Perc:{2:.6f}, Best:{3:.6f}".format(cur, truncate(self.get_MACD_rate(cur, rates), 6),
-                                                                                 self.get_percentile(rates, self.lending_style),
-                                                                                 rates.rate0.iloc[-1]))
+                print("Cur:{0}, MACD:{1:.6f}, Perc:{2:.6f}, Best:{3:.6f}"
+                      .format(cur, truncate(self.get_MACD_rate(cur, rates), 6),
+                              self.get_percentile(rates, self.lending_style),
+                              rates.rate0.iloc[-1]))
             if method == 'percentile':
                 return self.get_percentile(rates, self.lending_style)  # rates is a tuple, first entry is unixtime
             if method == 'MACD':
@@ -357,7 +367,7 @@ class MarketAnalysis(object):
         else:
             return long_rate * self.daily_min_multiplier
 
-    def create_connection(self, cur, db_dir=None, db_type='sqlite3'):
+    def create_connection(self, cur, db_path=None, db_type='sqlite3'):
         """
         Create a connection to the sqlite DB. This will create a new file if one doesn't exist.  We can use :memory:
         here for db_path if we don't want to store the data on disk
@@ -366,16 +376,14 @@ class MarketAnalysis(object):
         :param db_path: DB directory
         :return: Connection object or None
         """
-        if db_dir is None:
+        if db_path is None:
             prefix = Config.get_exchange()
             db_path = os.path.join(self.db_dir, '{0}-{1}.db'.format(prefix, cur))
         try:
-            con = lite.connect(db_path)
+            con = sqlite.connect(db_path)
             return con
         except Error as ex:
             print(ex.message)
-
-        return None
 
     def create_rate_table(self, db_con, levels):
         """
