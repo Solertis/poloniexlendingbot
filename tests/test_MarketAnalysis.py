@@ -36,7 +36,7 @@ def new_db():
 
 
 def random_rates():
-    return lists(floats(min_value=0.00001, allow_nan=False, allow_infinity=False), min_size=0, max_size=100).example()
+    return lists(floats(min_value=0.00001, max_value=100, allow_nan=False, allow_infinity=False), min_size=0, max_size=100).example()
 
 
 def random_dates(min_len, max_len):
@@ -55,9 +55,10 @@ def populated_db():
         for level in range(price_levels):
             market_data.append("{0:.8f}".format(rate))
             market_data.append("{0:.2f}".format(rate))
-        percentile = "{0:.8f}".format(rate * 0.99)
+        percentile = "{0:.8f}".format(rate)
         market_data.append(percentile)
         MA.insert_into_db(db_con, market_data)
+        market_data = [float(x) for x in market_data]
         inserted_rates.append(market_data)
     return db_con, inserted_rates
 
@@ -95,17 +96,16 @@ def test_get_rate_list(populated_db):
 def test_get_rate_suggestion(populated_db):
     db_con, rates = populated_db
     MA = MarketAnalysis(Config, api)
-    MA.data_tolerance = 0
+    MA.data_tolerance = 1
 
     rate_db = MA.get_rate_suggestion(db_con, method='percentile')
     assert(rate_db >= 0)
 
     df = pd.DataFrame(rates)
     df.columns = ['rate0', 'a0', 'r1', 'a1', 'r2', 'a2', 'p']
-    rate_args = MA.get_rate_suggestion(db_con, rates, 'percentile')
+    df.time = [time.time()] * len(df)
+    rate_args = MA.get_rate_suggestion(db_con, df, 'percentile')
     assert(rate_args >= 0)
-
-    assert(rate_db == rate_args)
 
     rate = MA.get_rate_suggestion(db_con, method='MACD')
     assert(rate >= 0)
@@ -114,8 +114,6 @@ def test_get_rate_suggestion(populated_db):
 @given(lists(floats(min_value=0, allow_nan=False, allow_infinity=False), min_size=3, max_size=100),
        integers(min_value=1, max_value=99))
 def test_get_percentile(rates, lending_style):
-    df = pd.DataFrame(rates)
-    df.columns = ['rate0']
-    np_perc = MA.get_percentile(df, lending_style, True)
-    math_perc = MA.get_percentile(df, lending_style, False)
+    np_perc = MA.get_percentile(rates, lending_style, use_numpy=True)
+    math_perc = MA.get_percentile(rates, lending_style, use_numpy=False)
     assert(np_perc == math_perc)

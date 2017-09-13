@@ -230,6 +230,9 @@ class MarketAnalysis(object):
 
         price_levels = ['rate0']
         rates = self.get_rates_from_db(db_con, from_date=time.time() - request_seconds, price_levels=price_levels)
+        if len(rates) == 0:
+            return []
+
         df = pd.DataFrame(rates)
 
         columns = ['time']
@@ -278,6 +281,8 @@ class MarketAnalysis(object):
 
         try:
             rates = self.get_rate_list(cur, self.get_analysis_seconds(method)) if rates is None else rates
+            if not isinstance(rates, pd.DataFrame):
+                raise ValueError("Rates must be a Pandas DataFrame")
             if len(rates) == 0:
                 print("Rate list not populated")
                 if self.ma_debug_log:
@@ -289,7 +294,7 @@ class MarketAnalysis(object):
                               self.get_percentile(rates, self.lending_style),
                               rates.rate0.iloc[-1]))
             if method == 'percentile':
-                return self.get_percentile(rates, self.lending_style)  # rates is a tuple, first entry is unixtime
+                return self.get_percentile(rates.rate0.values.tolist(), self.lending_style)
             if method == 'MACD':
                 return truncate(self.get_MACD_rate(cur, rates), 6)
         except MarketDataException:
@@ -327,10 +332,13 @@ class MarketAnalysis(object):
         return d0 + d1
 
     def get_percentile(self, rates, lending_style, use_numpy=use_numpy):
+        """
+        Take a list of rates no matter what method is being used, simple list, no pandas / numpy array
+        """
         if use_numpy:
-            result = numpy.percentile(rates.rate0, int(lending_style))
+            result = numpy.percentile(rates, int(lending_style))
         else:
-            result = self.percentile(sorted(rates.rate0.values.tolist()), lending_style / 100.0)
+            result = self.percentile(sorted(rates), lending_style / 100.0)
         result = truncate(result, 6)
         return result
 
