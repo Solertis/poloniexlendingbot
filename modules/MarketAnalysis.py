@@ -291,7 +291,7 @@ class MarketAnalysis(object):
             if self.ma_debug_log:
                 print("Cur:{0}, MACD:{1:.6f}, Perc:{2:.6f}, Best:{3:.6f}"
                       .format(cur, truncate(self.get_MACD_rate(cur, rates), 6),
-                              self.get_percentile(rates, self.lending_style),
+                              self.get_percentile(rates.rate0.values.tolist(), self.lending_style),
                               rates.rate0.iloc[-1]))
             if method == 'percentile':
                 return self.get_percentile(rates.rate0.values.tolist(), self.lending_style)
@@ -300,7 +300,7 @@ class MarketAnalysis(object):
         except MarketDataException:
             if method != 'percentile':
                 print("Caught exception during {0} analysis, using percentile for now".format(method))
-                return self.get_percentile(rates, self.lending_style)
+                return self.get_percentile(rates.rate0.values.tolist(), self.lending_style)
             else:
                 raise
         except Exception as ex:
